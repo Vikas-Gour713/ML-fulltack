@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Student Placement Predictor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <section class="intro">
+      <h1>Will this student get placed?</h1>
+      <p>Enter a student's study habits and academic record. The model trained on past student data returns a placement prediction in a second.</p>
+      <ul>
+        <li><span>Model</span><span>Decision Tree</span></li>
+        <li><span>Training records</span><span>~10,000 students</span></li>
+        <li><span>Branches covered</span><span>6</span></li>
+        <li><span>Output</span><span>Placed / Not Placed</span></li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <form id="predict-form" novalidate>
+        <fieldset>
+          <legend>Student profile</legend>
+          <div class="grid">
+            <div class="field">
+              <span class="label" id="gender-label">Gender</span>
+              <div class="segmented" role="radiogroup" aria-labelledby="gender-label">
+                <label><input type="radio" name="gender" value="male" checked><span>Male</span></label>
+                <label><input type="radio" name="gender" value="female"><span>Female</span></label>
+              </div>
+            </div>
+            <div class="field">
+              <label for="branch">Branch</label>
+              <select id="branch" name="branch" required>
+                <option value="CSE">CSE</option>
+                <option value="IT">IT</option>
+                <option value="ECE">ECE</option>
+                <option value="MECHANICAL">Mechanical</option>
+                <option value="CIVIL">Civil</option>
+                <option value="COMMERCE">Commerce</option>
+              </select>
+            </div>
+            <div class="field">
+              <span class="label" id="extra-label">Extracurricular activities</span>
+              <div class="segmented" role="radiogroup" aria-labelledby="extra-label">
+                <label><input type="radio" name="extracurricular" value="yes"><span>Yes</span></label>
+                <label><input type="radio" name="extracurricular" value="no" checked><span>No</span></label>
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Daily habits</legend>
+          <div class="grid">
+            <div class="field">
+              <label for="study_hours">Study hours <span class="hint">(per day)</span></label>
+              <input type="number" id="study_hours" name="study_hours" min="0" max="24" step="0.1" placeholder="e.g. 4.5" required>
+            </div>
+            <div class="field">
+              <label for="sleep_hours">Sleep hours <span class="hint">(per day)</span></label>
+              <input type="number" id="sleep_hours" name="sleep_hours" min="0" max="24" step="0.1" placeholder="e.g. 7" required>
+            </div>
+            <div class="field">
+              <label for="internet_usage">Internet usage <span class="hint">(hours per day)</span></label>
+              <input type="number" id="internet_usage" name="internet_usage" min="0" max="24" step="0.1" placeholder="e.g. 3" required>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Academic record</legend>
+          <div class="grid">
+            <div class="field">
+              <label for="attendance">Attendance <span class="hint">(%)</span></label>
+              <input type="number" id="attendance" name="attendance" min="0" max="100" step="0.1" placeholder="e.g. 82" required>
+            </div>
+            <div class="field">
+              <label for="assignments_completed">Assignments completed <span class="hint">(0–20)</span></label>
+              <input type="number" id="assignments_completed" name="assignments_completed" min="0" max="20" step="1" placeholder="e.g. 15" required>
+            </div>
+            <div class="field">
+              <label for="previous_score">Previous score <span class="hint">(out of 100)</span></label>
+              <input type="number" id="previous_score" name="previous_score" min="0" max="100" step="0.1" placeholder="e.g. 68" required>
+            </div>
+            <div class="field">
+              <label for="exam_score">Exam score <span class="hint">(out of 100)</span></label>
+              <input type="number" id="exam_score" name="exam_score" min="0" max="100" step="0.1" placeholder="e.g. 72" required>
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="actions">
+          <button type="button" class="ghost" id="reset-btn">Clear form</button>
+          <button type="submit" class="primary" id="submit-btn">Predict placement</button>
+        </div>
+
+        <div id="result" class="result" role="status" aria-live="polite">
+          <div class="icon" id="result-icon"></div>
+          <div>
+            <h2 id="result-title"></h2>
+            <p id="result-text"></p>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <footer>Predictions are statistical estimates based on past data and should not be the only basis for any decision.</footer>
+  </main>
+
+  <script>
+    // Change this if your FastAPI server runs somewhere else
+    const API_URL = "http://127.0.0.1:8000/predict";
+
+    const form = document.getElementById("predict-form");
+    const submitBtn = document.getElementById("submit-btn");
+    const resultBox = document.getElementById("result");
+    const numberFields = ["study_hours", "attendance", "sleep_hours", "internet_usage",
+                          "assignments_completed", "previous_score", "exam_score"];
+
+    function showResult(kind, icon, title, text) {
+      resultBox.className = "result show " + kind;
+      document.getElementById("result-icon").textContent = icon;
+      document.getElementById("result-title").textContent = title;
+      document.getElementById("result-text").textContent = text;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      resultBox.className = "result";
+
+      // Validate numbers against their min/max
+      for (const id of numberFields) {
+        const input = document.getElementById(id);
+        const v = parseFloat(input.value);
+        if (input.value === "" || isNaN(v) || v < +input.min || v > +input.max) {
+          input.focus();
+          showResult("error", "!", "Check your input",
+            `Enter a value between ${input.min} and ${input.max} for “${input.labels[0].firstChild.textContent.trim()}”.`);
+          return;
+        }
+      }
+
+      const payload = {
+        gender: form.gender.value,
+        branch: form.branch.value,
+        extracurricular: form.extracurricular.value,
+      };
+      numberFields.forEach(id => payload[id] = parseFloat(document.getElementById(id).value));
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Predicting…";
+      try {
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error("Server returned " + res.status);
+        const data = await res.json();
+        if (data.prediction === "Placed") {
+          showResult("placed", "✓", "Placed", "The model predicts this student is likely to get placed.");
+        } else {
+          showResult("not-placed", "✕", "Not placed", "The model predicts this student is unlikely to get placed with the current profile.");
+        }
+      } catch (err) {
+        showResult("error", "!", "Could not reach the API",
+          "Start the server with “uvicorn app:app --reload” and make sure CORS is enabled.");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Predict placement";
+      }
+    });
+
+    document.getElementById("reset-btn").addEventListener("click", () => {
+      form.reset();
+      resultBox.className = "result";
+    });
+  </script>
+</body>
+</html>
